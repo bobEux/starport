@@ -1,16 +1,12 @@
 package starportcmd
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
-
 	"github.com/spf13/cobra"
-	"github.com/tendermint/starport/starport/pkg/gomodulepath"
-	starportserve "github.com/tendermint/starport/starport/services/serve"
+	"github.com/tendermint/starport/starport/pkg/chaincmd"
+	"github.com/tendermint/starport/starport/services/chain"
 )
 
+// NewBuild returns a new build command to build a blockchain app.
 func NewBuild() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "build",
@@ -18,40 +14,21 @@ func NewBuild() *cobra.Command {
 		Args:  cobra.ExactArgs(0),
 		RunE:  buildHandler,
 	}
+	c.Flags().AddFlagSet(flagSetHomes())
 	c.Flags().StringVarP(&appPath, "path", "p", "", "path of the app")
 	c.Flags().BoolP("verbose", "v", false, "Verbose output")
 	return c
 }
 
 func buildHandler(cmd *cobra.Command, args []string) error {
-	verbose, _ := cmd.Flags().GetBool("verbose")
-	path, err := gomodulepath.Parse(getModule(appPath))
+	chainOption := []chain.Option{
+		chain.LogLevel(logLevel(cmd)),
+		chain.KeyringBackend(chaincmd.KeyringBackendTest),
+	}
+
+	c, err := newChainWithHomeFlags(cmd, appPath, chainOption...)
 	if err != nil {
 		return err
 	}
-	app := starportserve.App{
-		Name: path.Root,
-		Path: appPath,
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
-	go func() {
-		<-quit
-		cancel()
-	}()
-
-	s, err := starportserve.New(app, verbose)
-	if err != nil {
-		return err
-	}
-	err = s.Build(ctx)
-	if err == context.Canceled {
-		fmt.Println("aborted")
-		return nil
-	}
-	return err
+	return c.Build(cmd.Context())
 }

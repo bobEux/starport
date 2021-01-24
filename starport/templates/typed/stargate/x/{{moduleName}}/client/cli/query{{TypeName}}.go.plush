@@ -15,10 +15,6 @@ func CmdList<%= title(TypeName) %>() *cobra.Command {
 		Short: "list all <%= TypeName %>",
 		RunE: func(cmd *cobra.Command, args []string) error {
             clientCtx := client.GetClientContextFromCmd(cmd)
-            clientCtx, err := client.ReadQueryCommandFlags(clientCtx, cmd.Flags())
-            if err != nil {
-                return err
-            }
 
             pageReq, err := client.ReadPageRequest(cmd.Flags())
             if err != nil {
@@ -31,12 +27,40 @@ func CmdList<%= title(TypeName) %>() *cobra.Command {
                 Pagination: pageReq,
             }
 
-            res, err := queryClient.All<%= title(TypeName) %>(context.Background(), params)
+            res, err := queryClient.<%= title(TypeName) %>All(context.Background(), params)
             if err != nil {
                 return err
             }
 
-            return clientCtx.PrintOutput(res)
+            return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+
+    return cmd
+}
+
+func CmdShow<%= title(TypeName) %>() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "show-<%= TypeName %> [id]",
+		Short: "shows a <%= TypeName %>",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx := client.GetClientContextFromCmd(cmd)
+
+            queryClient := types.NewQueryClient(clientCtx)
+
+            params := &types.QueryGet<%= title(TypeName) %>Request{
+                Id: args[0],
+            }
+
+            res, err := queryClient.<%= title(TypeName) %>(context.Background(), params)
+            if err != nil {
+                return err
+            }
+
+            return clientCtx.PrintProto(res)
 		},
 	}
 

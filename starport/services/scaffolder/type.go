@@ -16,13 +16,20 @@ import (
 	"github.com/tendermint/starport/starport/templates/typed"
 )
 
+const (
+	TypeString = "string"
+	TypeBool   = "bool"
+	TypeInt32  = "int32"
+)
+
 // AddType adds a new type stype to scaffolded app by using optional type fields.
 func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) error {
 	version, err := s.version()
 	if err != nil {
 		return err
 	}
-	path, err := gomodulepath.ParseFile(s.path)
+	majorVersion := version.Major()
+	path, err := gomodulepath.ParseAt(s.path)
 	if err != nil {
 		return err
 	}
@@ -36,7 +43,12 @@ func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) 
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("The module %s doesn't exist.", moduleName)
+		return fmt.Errorf("the module %s doesn't exist", moduleName)
+	}
+
+	// Ensure the type name is not a Go reserved name, it would generate an incorrect code
+	if isGoReservedWord(stype) {
+		return fmt.Errorf("%s can't be used as a type name", stype)
 	}
 
 	ok, err = isTypeCreated(s.path, moduleName, stype)
@@ -44,7 +56,7 @@ func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) 
 		return err
 	}
 	if ok {
-		return fmt.Errorf("%s type is already added.", stype)
+		return fmt.Errorf("%s type is already added", stype)
 	}
 
 	// Used to check duplicated field
@@ -55,22 +67,30 @@ func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) 
 		fs := strings.Split(f, ":")
 		name := fs[0]
 
+		// Ensure the field name is not a Go reserved name, it would generate an incorrect code
+		if isGoReservedWord(name) {
+			return fmt.Errorf("%s can't be used as a field name", name)
+		}
+
+		// Ensure the field is not duplicated
 		if _, exists := existingFields[name]; exists {
-			return fmt.Errorf("The field %s is duplicated.", name)
+			return fmt.Errorf("the field %s is duplicated", name)
 		}
 		existingFields[name] = true
 
-		datatypeName, datatype := "string", "string"
+		datatypeName, datatype := TypeString, TypeString
 		acceptedTypes := map[string]string{
-			"string": "string",
-			"bool":   "bool",
-			"int":    "int32",
+			"string": TypeString,
+			"bool":   TypeBool,
+			"int":    TypeInt32,
 		}
 		isTypeSpecified := len(fs) == 2
 		if isTypeSpecified {
 			if t, ok := acceptedTypes[fs[1]]; ok {
 				datatype = t
 				datatypeName = fs[1]
+			} else {
+				return fmt.Errorf("the field type %s doesn't exist", fs[1])
 			}
 		}
 		tfields = append(tfields, typed.Field{
@@ -86,11 +106,12 @@ func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) 
 			AppName:    path.Package,
 			ModulePath: path.RawPath,
 			ModuleName: moduleName,
+			OwnerName:  owner(path.RawPath),
 			TypeName:   stype,
 			Fields:     tfields,
 		}
 	)
-	if version == cosmosver.Launchpad {
+	if majorVersion == cosmosver.Launchpad {
 		g, err = typed.NewLaunchpad(opts)
 	} else {
 		g, err = typed.NewStargate(opts)
@@ -107,7 +128,10 @@ func (s *Scaffolder) AddType(moduleName string, stype string, fields ...string) 
 	if err != nil {
 		return err
 	}
-	return s.protoc(pwd, version)
+	if err := s.protoc(pwd, path.RawPath, majorVersion); err != nil {
+		return err
+	}
+	return fmtProject(pwd)
 }
 
 func isTypeCreated(appPath, moduleName, typeName string) (isCreated bool, err error) {
@@ -140,4 +164,55 @@ func isTypeCreated(appPath, moduleName, typeName string) (isCreated bool, err er
 		}
 	}
 	return
+}
+
+func isGoReservedWord(name string) bool {
+
+	// Check keyword or literal
+	if token.Lookup(name).IsKeyword() {
+		return true
+	}
+
+	// Check with builtin identifier
+	switch name {
+	case
+		"panic",
+		"recover",
+		"append",
+		"bool",
+		"byte",
+		"cap",
+		"close",
+		"complex",
+		"complex64",
+		"complex128",
+		"uint16",
+		"copy",
+		"false",
+		"float32",
+		"float64",
+		"imag",
+		"int",
+		"int8",
+		"int16",
+		"uint32",
+		"int32",
+		"int64",
+		"iota",
+		"len",
+		"make",
+		"new",
+		"nil",
+		"uint64",
+		"print",
+		"println",
+		"real",
+		"string",
+		"true",
+		"uint",
+		"uint8",
+		"uintptr":
+		return true
+	}
+	return false
 }

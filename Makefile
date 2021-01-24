@@ -1,13 +1,30 @@
+DATE := $(shell date '+%Y-%m-%dT%H:%M:%S')
+
+VERSION = $(shell git describe --tags)
+HEAD = $(shell git rev-parse HEAD)
+LD_FLAGS = -X github.com/tendermint/starport/starport/internal/version.Version='$(VERSION)' \
+	-X github.com/tendermint/starport/starport/internal/version.Head='$(HEAD)' \
+	-X github.com/tendermint/starport/starport/internal/version.Date='$(DATE)'
+BUILD_FLAGS = -mod=readonly -ldflags='$(LD_FLAGS)'
+
 all: install
 
 mod:
 	@go mod tidy
 
-build: mod
+pre-build:
+	@echo "Fetching latest tags"
+	@git fetch --tags
+
+build-static:
+	@go get github.com/go-bindata/go-bindata/...
+	@go-bindata -pkg cosmosfaucet -prefix starport/pkg/cosmosfaucet -o starport/pkg/cosmosfaucet/openapi_generated.go starport/pkg/cosmosfaucet/openapi/...
+
+build: mod pre-build
 	@go get -u github.com/gobuffalo/packr/v2/packr2
 	@cd ./starport/interface/cli/starport && packr2
 	@mkdir -p build/
-	@go build -mod=readonly -o build/ ./starport/interface/cli/...
+	@go build $(BUILD_FLAGS) -o build/ ./starport/interface/cli/...
 	@packr2 clean
 	@go mod tidy
 
@@ -20,10 +37,10 @@ ui:
 	go get github.com/rakyll/statik
 
 install: ui build
-	@go install -mod=readonly ./...
+	@go install $(BUILD_FLAGS) ./...
 
 cli: build
-	@go install -mod=readonly ./...
+	@go install $(BUILD_FLAGS) ./...
 
 lint:
 	golangci-lint run --out-format=tab --issues-exit-code=0
@@ -31,5 +48,4 @@ lint:
 
 .PHONY: lint
 
-.PHONY: all mod build ui install
-
+.PHONY: all mod pre-build build ui install
